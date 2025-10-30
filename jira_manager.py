@@ -105,7 +105,10 @@ class JiraManager:
         description: Optional[str] = None,
         assignee: Optional[str] = None,
         labels: Optional[list] = None,
-        priority: Optional[str] = None
+        priority: Optional[str] = None,
+        original_estimate: Optional[str] = None,
+        remaining_estimate: Optional[str] = None,
+        extra_fields: Optional[Dict[str, Any]] = None
     ) -> str:
         """Edit an existing Jira issue."""
         issue = self.jira.issue(issue_key)
@@ -121,6 +124,17 @@ class JiraManager:
             fields['labels'] = labels
         if priority is not None:
             fields['priority'] = {'name': priority}
+
+        if original_estimate is not None or remaining_estimate is not None:
+            timetracking: Dict[str, Any] = {}
+            if original_estimate is not None:
+                timetracking['originalEstimate'] = original_estimate
+            if remaining_estimate is not None:
+                timetracking['remainingEstimate'] = remaining_estimate
+            fields['timetracking'] = timetracking
+
+        if extra_fields:
+            fields.update(extra_fields)
 
         if fields:
             issue.update(fields=fields)
@@ -194,6 +208,20 @@ def main():
         '--summary',
         help='Issue summary (for edit)'
     )
+    parser.add_argument(
+        '--original-estimate',
+        help='Original estimate, e.g., 3h or 30m (for edit)'
+    )
+    parser.add_argument(
+        '--remaining-estimate',
+        help='Remaining estimate, e.g., 2h (for edit)'
+    )
+    parser.add_argument(
+        '--set-field',
+        action='append',
+        default=[],
+        help='Set arbitrary field as key=value; repeat for multiple (for edit)'
+    )
 
     args = parser.parse_args()
 
@@ -261,13 +289,29 @@ def main():
                 print("Error: Issue key is required for edit")
                 sys.exit(1)
 
+            extra_fields: Dict[str, Any] = {}
+            for kv in (args.set_field or []):
+                if '=' in kv:
+                    k, v = kv.split('=', 1)
+                    try:
+                        if '.' in v:
+                            v_coerced: Any = float(v)
+                        else:
+                            v_coerced = int(v)
+                    except ValueError:
+                        v_coerced = v
+                    extra_fields[k] = v_coerced
+
             key = manager.edit_issue(
                 issue_key=args.issue_key_or_summary,
                 summary=args.summary,
                 description=args.description,
                 assignee=args.assignee,
                 labels=args.labels,
-                priority=args.priority
+                priority=args.priority,
+                original_estimate=args.original_estimate,
+                remaining_estimate=args.remaining_estimate,
+                extra_fields=extra_fields
             )
             print(f"? Issue updated: {key}")
 
